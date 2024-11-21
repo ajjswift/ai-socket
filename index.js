@@ -81,7 +81,23 @@ io.on('connection', async (socket) => {
       console.error('Error during validation:', error);
       socket.disconnect();
     }
+
+    
   });
+  
+  socket.on('message-sent', (m) => {
+    console.log(m);
+    const {appKey, clientId, username, message} = JSON.parse(m);
+
+    const currentConnections = connectionMap[appKey];
+
+    // Notify other users in the room
+    for (const [key, connection] of Object.entries(currentConnections)) {
+      if (connection.clientId !== clientId) {
+        connection.socket.emit('message', JSON.stringify({ username, clientId, message }));
+      }
+    }
+  })
 
   socket.on('disconnect', () => {
     try {
@@ -108,6 +124,7 @@ io.on('connection', async (socket) => {
       console.error('Error during disconnect cleanup:', error);
     }
   });
+  
 });
 
 // Health check endpoints
