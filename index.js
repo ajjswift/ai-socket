@@ -110,6 +110,14 @@ io.on('connection', async (socket) => {
   });
 });
 
+// Health check endpoints
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
+app.get('/', (req, res) => {
+  res.status(200).send('OK');
+});
 
 server.listen(4566, () => {
   console.log('Server started on port 4566');
