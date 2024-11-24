@@ -3,6 +3,11 @@ import express from "express";
 import http from "http"; // Import the http module
 import cors from "cors";
 import getRedisClient from './redis';
+import { decrypt } from "./encrypt";
+import bcrypt from 'bcrypt';
+
+import { handleValidation } from "./validation";
+import { broadcast } from "./broadcast";
 
 const app = express();
 
@@ -23,107 +28,103 @@ const io = new Server(server, {
   },
 });
 
-const connectionMap = {};
+export const connectionMap = {};
 
 io.on('connection', async (socket) => {
   socket.emit('welcome', 'Please validate.');
 
-  socket.on('validate', async (m) => {
-    try {
-      console.log('Received validation message:', m);
+  socket.on('validate', (m) => handleValidation(m, socket));
 
-      const { roomCode, appKey, clientId, username } = m;
-
-      if (!username || !appKey || !clientId) {
-        console.log('Invalid data received, disconnecting.');
-        socket.disconnect();
-        return;
-      }
-
-      if (!connectionMap[appKey]) {
-        connectionMap[appKey] = {};
-      }
-
-      const redisClient = await getRedisClient();
-      const roomInfo = await redisClient.get(clientId);
-
-      if (!roomInfo) {
-        console.log('Room information not found, disconnecting.');
-        socket.disconnect();
-        return;
-      }
-
-      const currentConnections = connectionMap[appKey];
-
-      // Notify other users in the room
-      for (const [key, connection] of Object.entries(currentConnections)) {
-        if (connection.clientId !== clientId) {
-          connection.socket.emit('user-joined', JSON.stringify({ username, clientId }));
-        }
-      }
-
-      // Register the new connection
-      connectionMap[appKey][clientId] = {
-        socket,
-        clientId,
-        username,
-      };
-
-      // Emit the validated response
-      const sanitizedUsers = Object.values(connectionMap[appKey]).map(({ clientId, username }) => ({
-        clientId,
-        username,
-      }));
-
-      socket.emit(`validated-${clientId}`, { currentMembers: sanitizedUsers });
-
-    } catch (error) {
-      console.error('Error during validation:', error);
+  socket.on('rejoin', async (m) => {
+    const {clientId, appKey, clientSecret} = m
+    if (!clientId || !appKey || !clientSecret) {
+      console.log('Invalid params')
       socket.disconnect();
     }
 
-    
+    let decryptedSecret = decrypt(clientSecret);
+
+    const redisClient = await getRedisClient();
+    let clientInfo = await redisClient.get(clientId);
+
+    if (!clientInfo) {
+      console.log('Invalid client info.')
+      socket.disconnect();
+    }
+
+    clientInfo = JSON.parse(clientInfo);
+
+    let secretsMatch = await bcrypt.compare(decryptedSecret, clientInfo.secret);
+
+
+    let roomInfo = await redisClient.get(clientInfo.roomCode)
+      if (!roomInfo) {
+        console.log("Room no longer exists")
+        socket.disconnect();
+      }
+
+      roomInfo = JSON.parse(roomInfo);
+
+    if (!secretsMatch) {
+      console.log('Unauthorised.')
+    }
+    try {
+      const currentConnections = connectionMap[appKey];
+
+        
+      const sanitizedUsers = Object.entries(currentConnections)
+        .map(([clientId, { username, colour, active }]) => ({ clientId, username, colour, active }))
+        .filter((u) => u.active === true);
+
+
+      socket.emit(`rejoin-${clientId}`, {
+        roomName: roomInfo.name,
+        currentMembers: sanitizedUsers,
+      })
+      broadcast({
+        event: 'user-joined',
+        message: {currentMembers: sanitizedUsers},
+        appKey: appKey,
+        clientId: clientId,
+        includeUser: false
+      })
+      connectionMap[appKey][clientId].active = true; 
+      console.log(`User ${clientId} rejoined.`)
+    }
+    catch (e) {
+      console.log('User needs to validate, not rejoin.')
+      socket.emit(`revalidate-${clientId}`);
+    }
   });
+
+  socket.on('disconnect', async (m) => {
+    for (const appKey in connectionMap) {
+      const userConnections = connectionMap[appKey];
   
-  socket.on('message-sent', (m) => {
-    console.log(m);
-    const {appKey, clientId, username, message} = JSON.parse(m);
+      for (const clientId in userConnections) {
+        const connection = userConnections[clientId];
+  
+        if (connection.socket.id === socket.id) {
+          console.log(`User ${clientId} disconnected.`);
 
-    const currentConnections = connectionMap[appKey];
-
-    // Notify other users in the room
-    for (const [key, connection] of Object.entries(currentConnections)) {
-      if (connection.clientId !== clientId) {
-        connection.socket.emit('message', JSON.stringify({ username, clientId, message }));
+          const sanitizedUsers = Object.values(userConnections)
+          .map(({ clientId, username, colour }) => ({ clientId, username, colour }))
+          .filter((u) => u.active === true);
+          broadcast({
+            event: 'user-left',
+            message: {currentMembers: sanitizedUsers},
+            appKey: appKey,
+            clientId: clientId,
+            includeUser: false
+          })
+  
+          // Set user active to be false.
+          userConnections[clientId].active = false;
+          break;
+        }
       }
     }
   })
-
-  socket.on('disconnect', () => {
-    try {
-      for (const appKey in connectionMap) {
-        const userConnections = connectionMap[appKey];
-        for (const clientId in userConnections) {
-          if (userConnections[clientId].socket.id === socket.id) {
-            console.log(`User ${clientId} disconnected.`);
-
-            for (const [key, connection] of Object.entries(userConnections)) {
-              if (connection.clientId !== clientId) {
-                connection.socket.emit('user-left', JSON.stringify({ username: userConnections[clientId].username, clientId: userConnections[clientId].clientId }));
-              }
-            }
-
-            delete userConnections[clientId];
-            break;
-          }
-
-
-        }
-      }
-    } catch (error) {
-      console.error('Error during disconnect cleanup:', error);
-    }
-  });
   
 });
 
