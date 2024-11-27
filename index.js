@@ -4,7 +4,7 @@ import http from "http"; // Import the http module
 import cors from "cors";
 import getRedisClient from './redis';
 import { decrypt } from "./encrypt";
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 import { handleValidation } from "./validation";
 import { broadcast } from "./broadcast";
