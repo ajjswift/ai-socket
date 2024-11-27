@@ -1,6 +1,6 @@
 import { decrypt } from "./encrypt";
 import getRedisClient from "./redis";
-import bcrypt from 'bcrypt'
+import bcrypt from 'bcryptjs'
 import { connectionMap } from ".";
 import { broadcast } from "./broadcast";
 
