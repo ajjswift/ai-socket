@@ -81,6 +81,7 @@ io.on('connection', async (socket) => {
       socket.emit(`rejoin-${clientId}`, {
         roomName: roomInfo.name,
         currentMembers: sanitizedUsers,
+        yourScore: currentConnections[clientId].score
       })
       broadcast({
         event: 'user-joined',
