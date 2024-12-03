@@ -35,6 +35,7 @@ io.on('connection', async (socket) => {
 
   socket.on('validate', (m) => handleValidation(m, socket));
 
+
   socket.on('rejoin', async (m) => {
     const {clientId, appKey, clientSecret} = m
     if (!clientId || !appKey || !clientSecret) {
@@ -73,7 +74,7 @@ io.on('connection', async (socket) => {
 
         
       const sanitizedUsers = Object.entries(currentConnections)
-        .map(([clientId, { username, colour, active }]) => ({ clientId, username, colour, active }))
+        .map(([clientId, { username, colour, active, score }]) => ({ clientId, username, colour, active, score }))
         .filter((u) => u.active === true);
 
 
@@ -95,6 +96,29 @@ io.on('connection', async (socket) => {
       console.log('User needs to validate, not rejoin.')
       socket.emit(`revalidate-${clientId}`);
     }
+  });
+
+
+  socket.on('increment-score', async (m) => {
+    const {clientId, appKey, score} = m;
+    connectionMap[appKey][clientId].score = score;
+
+    const currentConnections = connectionMap[appKey];
+    const sanitizedUsers = Object.entries(currentConnections)
+      .map(([clientId, { username, colour, active, score }]) => ({ clientId, username, colour, active, score }))
+      .filter((u) => u.active === true);
+      
+    console.log('incrementing score')
+    console.log(sanitizedUsers)
+
+    socket.emit('score-updated', {currentMembers: sanitizedUsers});
+    broadcast({
+      event: 'score-update',
+      message: {currentMembers: sanitizedUsers},
+      appKey: appKey,
+      clientId: clientId,
+      includeUser: false
+    })
   });
 
   socket.on('disconnect', async (m) => {

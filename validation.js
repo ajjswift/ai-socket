@@ -53,6 +53,7 @@ export async function handleValidation(m, socket) {
         username: username,
         colour: colour,
         socket: socket,
+        score: 0,
         active: true
     }
         
@@ -60,7 +61,7 @@ export async function handleValidation(m, socket) {
 
         
     const sanitizedUsers = Object.entries(currentConnections)
-        .map(([clientId, { username, colour, active }]) => ({ clientId, username, colour, active }))
+        .map(([clientId, { username, colour, active, score }]) => ({ clientId, username, colour, active, score }))
         .filter((u) => u.active === true);
 
         
