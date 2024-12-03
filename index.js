@@ -113,7 +113,7 @@ io.on('connection', async (socket) => {
 
     socket.emit('score-updated', {currentMembers: sanitizedUsers});
     broadcast({
-      event: 'score-update',
+      event: 'score-updated',
       message: {currentMembers: sanitizedUsers},
       appKey: appKey,
       clientId: clientId,
